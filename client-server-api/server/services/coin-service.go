@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -25,6 +26,36 @@ func Init(coinRepo repositories.CoinRepositoryInterface) *CoinService {
 }
 
 func (s *CoinService) HandleQuote(w http.ResponseWriter, r *http.Request) {
+	coin, err := s.getUSDBRL()
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err != nil {
+		msgDefault := "Um erro ocorreu ao obter USDBRL: "
+
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(models.CustomResponse(msgDefault + err.Error()))
+
+		log.Printf(msgDefault, err.Error())
+		return
+	}
+
+	if err := s.Save(coin); err != nil {
+		msgDefault := "Não foi possível salvar a moeda USDBRL: "
+
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(models.CustomResponse(msgDefault + err.Error()))
+
+		log.Printf(msgDefault, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(coin)
+}
+
+func (s *CoinService) getUSDBRL() (*models.Coin, error) {
 	const QUOTE_API = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 
 	ctx, cancel := context.WithTimeout(
@@ -34,58 +65,44 @@ func (s *CoinService) HandleQuote(w http.ResponseWriter, r *http.Request) {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", QUOTE_API, nil)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	var coins map[string]models.Coin
 	err = json.Unmarshal(body, &coins)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
 	coin, contains := coins["USDBRL"]
 
 	if !contains {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return nil, err
 	}
 
-	if err := s.repo.Save(&coin); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(coin)
+	return &coin, nil
 }
 
-func (s *CoinService) Save(coin models.Coin) error {
-	const timeout = time.Millisecond * 10
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func (s *CoinService) Save(coin *models.Coin) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
 	defer cancel()
 
 	select {
 	case <-time.After(time.Millisecond * 10):
-		if err := s.Save(coin); err != nil {
+		if err := s.repo.Save(coin); err != nil {
 			return err
 		}
 		return nil
