@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -44,16 +45,14 @@ func getUSDBRL() {
 	var coinBid CoinBid
 	json.Unmarshal(body, &coinBid)
 
-	byteBid, err := json.Marshal(coinBid.Bid)
-	if err != nil {
-		panic(err)
-	}
-
 	file, err := os.Create("cotacao.txt")
 	if err != nil {
 		panic(err)
 	}
 
-	file.Write(byteBid)
+	_, err = file.WriteString(fmt.Sprintf("Dólar: %v", coinBid.Bid))
+	if err != nil {
+		panic(err)
+	}
 	log.Println("Cotação salva.")
 }
