@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -53,12 +54,8 @@ func (s *CoinService) HandleQuote(w http.ResponseWriter, r *http.Request) {
 
 	var coins map[string]models.Coin
 	err = json.Unmarshal(body, &coins)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
-	if len(coins) == 0 {
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -70,7 +67,29 @@ func (s *CoinService) HandleQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.repo.Save(&coin); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(coin)
+}
+
+func (s *CoinService) Save(coin models.Coin) error {
+	const timeout = time.Millisecond * 10
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	select {
+	case <-time.After(time.Millisecond * 10):
+		if err := s.Save(coin); err != nil {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		return errors.New("time exceeded")
+	}
 }
