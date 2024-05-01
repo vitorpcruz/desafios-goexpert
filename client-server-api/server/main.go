@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/vitorpcruz/desafios-golang/client-server-api/server/db"
@@ -14,5 +15,7 @@ func main() {
 	coinService := services.Init(coinRepository)
 
 	http.HandleFunc("/cotacao", coinService.HandleQuote)
+	log.Println("Server running at 8080")
+
 	http.ListenAndServe(":8080", nil)
 }
